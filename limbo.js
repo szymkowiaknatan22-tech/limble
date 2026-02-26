@@ -3,19 +3,20 @@
 if (window.__LIMBO_ACTIVE__) return "LIMBO ALREADY RUNNING";
 window.__LIMBO_ACTIVE__ = true;
 
-// =============================
+// =====================
 // CONFIG
-// =============================
+// =====================
 const BPM = 200;
 const BEAT = 60000 / BPM; // 300ms
-const MOVE_EVERY_BEAT = 2; // move on 2 & 4
-const STRUGGLE_DURATION = 6000;
 const TEXT_RING_DURATION = 3000;
+const STRUGGLE_DURATION = 6000;
 const SMASH_FREEZE = 800;
 
-// =============================
+let conveyorSpeedMultiplier = 1;
+
+// =====================
 // OVERLAY
-// =============================
+// =====================
 const overlay = document.createElement("div");
 overlay.style.position = "fixed";
 overlay.style.inset = "0";
@@ -25,22 +26,21 @@ overlay.style.overflow = "hidden";
 overlay.style.background = "transparent";
 document.body.appendChild(overlay);
 
-// =============================
-// TEXT CAPTURE
-// =============================
+// =====================
+// CAPTURE TEXT
+// =====================
 const textNodes = [];
 const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
 
 while (walker.nextNode()) {
-  const n = walker.currentNode;
-  if (!n.nodeValue.trim()) continue;
-  const p = n.parentElement;
+  const node = walker.currentNode;
+  if (!node.nodeValue.trim()) continue;
+  const p = node.parentElement;
   if (!p || p.offsetWidth === 0 || p.offsetHeight === 0) continue;
-  textNodes.push(n);
+  textNodes.push(node);
 }
 
-const savedText = textNodes.slice(0, 80).map(n => ({
-  node: n,
+const savedText = textNodes.slice(0, 120).map(n => ({
   parent: n.parentElement,
   visibility: n.parentElement.style.visibility,
   text: n.nodeValue.trim()
@@ -48,46 +48,62 @@ const savedText = textNodes.slice(0, 80).map(n => ({
 
 savedText.forEach(d => d.parent.style.visibility = "hidden");
 
-// =============================
+// =====================
 // TRUE CIRCULAR TEXT RING
-// =============================
+// =====================
 const ringWrap = document.createElement("div");
 ringWrap.style.position = "fixed";
 ringWrap.style.inset = "0";
+ringWrap.style.display = "flex";
+ringWrap.style.justifyContent = "center";
+ringWrap.style.alignItems = "center";
+ringWrap.style.pointerEvents = "none";
 overlay.appendChild(ringWrap);
 
-const cx = innerWidth / 2;
-const cy = innerHeight / 2;
-const radius = Math.min(innerWidth, innerHeight) * 0.32;
+const ringContainer = document.createElement("div");
+ringContainer.style.position = "relative";
+ringWrap.appendChild(ringContainer);
 
-const bg = getComputedStyle(document.body).backgroundColor.match(/\d+/g) || [255,255,255];
-const brightness = (Number(bg[0]) + Number(bg[1]) + Number(bg[2])) / 3;
+const radius = Math.min(innerWidth, innerHeight) * 0.35;
+
+const bgRGB = getComputedStyle(document.body).backgroundColor.match(/\d+/g) || [255,255,255];
+const brightness = (Number(bgRGB[0]) + Number(bgRGB[1]) + Number(bgRGB[2])) / 3;
 const ringColor = brightness < 128 ? "white" : "black";
 
-const letters = [];
+let characters = [];
 savedText.forEach(d => {
   for (let ch of d.text) {
-    if (ch.trim()) letters.push(ch);
+    if (ch.trim()) characters.push(ch);
   }
 });
 
-letters.forEach((ch, i) => {
+const circumference = 2 * Math.PI * radius;
+let fontSize = Math.min(22, circumference / characters.length * 0.6);
+fontSize = Math.max(fontSize, 10);
+
+characters.forEach((ch, i) => {
   const span = document.createElement("span");
   span.textContent = ch;
-  span.style.position = "fixed";
+  span.style.position = "absolute";
+  span.style.fontSize = fontSize + "px";
   span.style.color = ringColor;
-  span.style.fontSize = "16px";
-  span.style.transformOrigin = "0 0";
-  ringWrap.appendChild(span);
-
-  const angle = (i / letters.length) * Math.PI * 2;
-  const x = cx + Math.cos(angle) * radius;
-  const y = cy + Math.sin(angle) * radius;
-
-  span.style.left = x + "px";
-  span.style.top = y + "px";
-  span.style.transform = `rotate(${angle * 180 / Math.PI + 90}deg)`;
+  span.style.left = "50%";
+  span.style.top = "50%";
+  span.style.transformOrigin = `0 ${-radius}px`;
+  const angle = (i / characters.length) * 360;
+  span.style.transform =
+    `rotate(${angle}deg) translateY(${radius}px) rotate(90deg)`;
+  ringContainer.appendChild(span);
 });
+
+let startTime = performance.now();
+
+function rotateRing(now) {
+  const progress = (now - startTime) / TEXT_RING_DURATION;
+  ringContainer.style.transform = `rotate(${progress * 360}deg)`;
+  if (progress < 1) requestAnimationFrame(rotateRing);
+}
+requestAnimationFrame(rotateRing);
 
 setTimeout(() => {
   ringWrap.remove();
@@ -95,9 +111,9 @@ setTimeout(() => {
   struggle();
 }, TEXT_RING_DURATION);
 
-// =============================
-// STRUGGLE + PULSE
-// =============================
+// =====================
+// STRUGGLE PHASE
+// =====================
 const pulseLayer = document.createElement("div");
 pulseLayer.style.position = "absolute";
 pulseLayer.style.inset = "0";
@@ -106,7 +122,7 @@ pulseLayer.style.opacity = "0";
 overlay.appendChild(pulseLayer);
 
 function struggle() {
-  let start = performance.now();
+  const start = performance.now();
 
   function frame(now) {
     const t = now - start;
@@ -127,9 +143,9 @@ function struggle() {
   requestAnimationFrame(frame);
 }
 
-// =============================
+// =====================
 // BEAM
-// =============================
+// =====================
 function beam() {
   const b = document.createElement("div");
   b.style.position = "fixed";
@@ -159,11 +175,9 @@ function beam() {
   grow();
 }
 
-// =============================
-// LIMBO CONVEYOR
-// =============================
-let conveyorSpeedMultiplier = 1;
-
+// =====================
+// CONVEYOR
+// =====================
 function startLimbo() {
 
   overlay.style.background =
@@ -198,10 +212,8 @@ function startLimbo() {
     function move(){
       x += baseSpeed * conveyorSpeedMultiplier * dir;
       c.style.transform=`translate(${x}px,${y}px)`;
-
       if(dir===1 && x>innerWidth+d.w) dir=-1;
       if(dir===-1 && x<-d.w) dir=1;
-
       requestAnimationFrame(move);
     }
     move();
@@ -210,20 +222,21 @@ function startLimbo() {
   spawnMonsters();
 }
 
-// =============================
-// MONSTERS RHYTHM SYSTEM
-// =============================
+// =====================
+// MONSTERS
+// =====================
 function spawnMonsters() {
 
   const size = Math.min(innerWidth, innerHeight) * 0.28;
+  const margin = 20;
 
-  function makeMonster(side) {
-    const m = document.createElement("div");
+  function makeMonster(side){
+    const m=document.createElement("div");
     m.style.position="fixed";
     m.style.width=size+"px";
     m.style.height=size+"px";
-    m.style.border="6px solid white";
     m.style.background="rgba(20,0,40,0.8)";
+    m.style.border="6px solid white";
     m.style.boxShadow="0 0 40px rgba(200,0,255,0.5)";
     if(side==="left") m.style.left="0";
     else m.style.right="0";
@@ -234,26 +247,26 @@ function spawnMonsters() {
   const left = makeMonster("left");
   const right = makeMonster("right");
 
-  let yL=20;
-  let yR=innerHeight-size-20;
-  let dirL=1;
-  let dirR=-1;
+  let yL = margin;
+  let yR = innerHeight - size - margin;
+  let dirL = 1;
+  let dirR = -1;
 
-  let beatCount=0;
-  let smashed=false;
+  let beatCount = 0;
+  let smashed = false;
 
-  const beatInterval = setInterval(()=>{
+  const interval = setInterval(() => {
 
     beatCount++;
-    if (beatCount>4) beatCount=1;
+    if (beatCount > 4) beatCount = 1;
 
-    if (beatCount===2 || beatCount===4) {
+    if (beatCount === 2 || beatCount === 4) {
 
-      yL += dirL*size;
-      yR += dirR*size;
+      yL += dirL * size;
+      yR += dirR * size;
 
-      if(yL>innerHeight-size-20 || yL<20) dirL*=-1;
-      if(yR>innerHeight-size-20 || yR<20) dirR*=-1;
+      if (yL > innerHeight-size-margin || yL < margin) dirL *= -1;
+      if (yR > innerHeight-size-margin || yR < margin) dirR *= -1;
 
       left.style.transition="transform 0.18s cubic-bezier(.3,1.3,.5,1)";
       right.style.transition="transform 0.18s cubic-bezier(.3,1.3,.5,1)";
@@ -263,7 +276,7 @@ function spawnMonsters() {
 
       if(Math.abs(yL-yR)<5 && !smashed){
         smashed=true;
-        clearInterval(beatInterval);
+        clearInterval(interval);
         smash(left,right,yL,size);
       }
     }
@@ -273,7 +286,7 @@ function spawnMonsters() {
 
 function smash(left,right,y,size){
 
-  const center = innerWidth/2-size/2;
+  const center = innerWidth/2 - size/2;
 
   left.style.transition="transform 0.15s ease-in";
   right.style.transition="transform 0.15s ease-in";
@@ -282,18 +295,13 @@ function smash(left,right,y,size){
   right.style.transform=`translate(${center}px,${y}px) scaleX(0.8)`;
 
   setTimeout(()=>{
-    left.style.transform=`translate(${center}px,${y}px) scaleX(1)`;
-    right.style.transform=`translate(${center}px,${y}px) scaleX(1)`;
 
-    setTimeout(()=>{
-      left.style.opacity="0";
-      right.style.opacity="0";
+    left.style.opacity="0";
+    right.style.opacity="0";
 
-      conveyorSpeedMultiplier = 1.8;
+    conveyorSpeedMultiplier = 2;
 
-    }, SMASH_FREEZE);
-
-  },150);
+  }, SMASH_FREEZE);
 }
 
 return "LIMBO INITIALIZED";
